@@ -11,6 +11,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL", "postgresql://fireheatmap:fireheatmap@localhost:5432/firemap"
     )
+    JWT_SECRET_KEY= os.environ.get("JWT_SECRET_KEY")
     
 class DevelopmentConfig(Config):
     DEBUG = True
