@@ -12,9 +12,14 @@ def create_app(env=None):
     
     db.init_app(app)
 
-    from app.routes.auth_routes import auth_bp
 
+
+    from app.routes.auth_routes import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+    from app.routes.cell_routes import cell_bp
+    app.register_blueprint(cell_bp,url_prefix="/api/v1/cells",)
+    
+    
     
     @app.get("/health")
     def health():

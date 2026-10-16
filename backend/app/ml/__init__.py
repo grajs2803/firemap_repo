@@ -1,13 +1,9 @@
-from app.ml.dummy_model import (
-    DummyRiskModel
-)
+from app.ml.dummy_model import DummyRiskModel, risk_level
 
 _model = DummyRiskModel()
 
-
 def get_model():
     return _model
-
 
 def build_feature_row(cell, daily):
     return {

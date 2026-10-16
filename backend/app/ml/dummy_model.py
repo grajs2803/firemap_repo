@@ -1,5 +1,6 @@
 import math
 
+
 FEATURES = [
     "fwi",
     "ndvi",
@@ -34,9 +35,9 @@ def _sigmoid(x):
 def risk_level(probability):
     if probability < 0.10:
         return "low"
-    if probability < 0.25:
+    elif probability < 0.25:
         return "moderate"
-    if probability < 0.50:
+    elif probability < 0.50:
         return "high"
     return "extreme"
 
