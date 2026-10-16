@@ -31,15 +31,14 @@ BIAS = -3.0
 def _sigmoid(x):
     return 1.0 / (1.0 + math.exp(-x))
 
+LEVEL_BREAKS = [("low", 0.10), ("moderate", 0.25), ("high", 0.50), ("extreme", 1.0)]
 
-def risk_level(probability):
-    if probability < 0.10:
-        return "low"
-    elif probability < 0.25:
-        return "moderate"
-    elif probability < 0.50:
-        return "high"
-    return "extreme"
+
+def risk_level(p):
+    for name, upper in LEVEL_BREAKS:
+        if p < upper:
+            return name
+    return LEVEL_BREAKS[-1][0]
 
 
 class DummyRiskModel:
@@ -65,16 +64,12 @@ class DummyRiskModel:
             )
 
         return result
+    def predict_logit(self, row):
+        z = self._z(row)
+        return BIAS + sum(WEIGHTS[f] * z[f] for f in FEATURES)
 
     def predict_proba(self, row):
-        z = self._z(row)
-
-        logit = BIAS + sum(
-            WEIGHTS[feature] * z[feature]
-            for feature in FEATURES
-        )
-
-        return _sigmoid(logit)
+        return _sigmoid(self.predict_logit(row))
 
     def explain(self, row):
         z = self._z(row)
@@ -100,3 +95,7 @@ class DummyRiskModel:
             "base_value": BIAS,
             "contributions": contributions,
         }
+
+        
+        
+        

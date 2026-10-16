@@ -1,4 +1,4 @@
-from app.ml.dummy_model import DummyRiskModel, risk_level
+from app.ml.dummy_model import DummyRiskModel, FEATURES, LEVEL_BREAKS, risk_level 
 
 _model = DummyRiskModel()
 

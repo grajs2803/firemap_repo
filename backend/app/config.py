@@ -12,6 +12,7 @@ class Config:
         "DATABASE_URL", "postgresql://fireheatmap:fireheatmap@localhost:5432/firemap"
     )
     JWT_SECRET_KEY= os.environ.get("JWT_SECRET_KEY")
+    TILE_SERVER_URL = os.environ.get("TILE_SERVER_URL", "http://localhost:8000/tiles")
     
 class DevelopmentConfig(Config):
     DEBUG = True
