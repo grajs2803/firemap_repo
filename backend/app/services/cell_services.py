@@ -1,7 +1,7 @@
 from app.errors import APIError, NotFound
 from app.ml import build_feature_row, get_model, risk_level
 from app.models.cell import Cell
-from app.models.daily_feature import DailyFeature
+from app.models.daily_features import DailyFeature
 from app.utils.params import parse_date
 from app.extensions import db
 
@@ -16,12 +16,12 @@ def _get_cell(cell_id):
 
 def get_cell(cell_id, date_str):
     cell = _get_cell(cell_id)
-
+    d = parse_date(date_str)
 
     q = DailyFeature.query.filter_by(cell_id=cell_id)
 
     daily = (
-        q.filter_by(date=date_str).first()
+        q.filter_by(date=d).first()
         if d
         else q.order_by(DailyFeature.date.desc()).first()
     )
