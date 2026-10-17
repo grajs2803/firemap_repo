@@ -1,5 +1,6 @@
-from flask import jsonify
-
+from flask import jsonify, current_app
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import HTTPException
 
 class APIError(Exception):
     status_code = 400
@@ -17,13 +18,44 @@ class NotFound(APIError):
 
 
 def register_error_handlers(app):
-    @app.errorhandler(APIError)
-    def handle_api_error(err):
-        body = {"error": {"message": err.message}}
-        if err.details:
-            body["error"]["details"] = err.details
-        return jsonify(body), err.status_code
 
-    @app.errorhandler(404)
-    def handle_404(_):
-        return jsonify({"error": {"message": "route not found"}}), 404
+    @app.errorhandler(APIError)
+    def handle_api_error(error):
+        return jsonify({
+            "error": {
+                "code": error.code,
+                "message": error.message,
+                "details": error.details,
+            }
+        }), error.status_code
+
+    @app.errorhandler(SQLAlchemyError)
+    def handle_database_error(error):
+        current_app.logger.exception("Database query failed")
+
+        return jsonify({
+            "error": {
+                "code": "database_error",
+                "message": "Unable to retrieve data at this time.",
+            }
+        }), 500
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(error):
+        return jsonify({
+            "error": {
+                "code": error.name.lower().replace(" ", "_"),
+                "message": error.description,
+            }
+        }), error.code
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(error):
+        current_app.logger.exception("Unexpected application error")
+
+        return jsonify({
+            "error": {
+                "code": "internal_server_error",
+                "message": "An unexpected server error occurred.",
+            }
+        }), 500
