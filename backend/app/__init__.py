@@ -23,7 +23,14 @@ def create_app(env=None):
     app.register_blueprint(cell_bp,url_prefix="/api/v1/cells")
     from app.routes.heatmap_routes import heatmap_bp
     app.register_blueprint(heatmap_bp,url_prefix="/api/v1/heatmap")
-    
+    from app.routes.history_routes import history_bp
+    app.register_blueprint(history_bp, url_prefix="/api/v1/history")
+
+    @app.get("/map")
+    def history_map():
+        # minimal demo page: grid of past fires over India (see static/history_map.html)
+        return app.send_static_file("history_map.html")
+
     
     
     @app.get("/health")
