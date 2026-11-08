@@ -9,5 +9,5 @@ heatmap_bp = Blueprint("heatmap", __name__)
 def get_heatmap():
     a = request.args
     result = heat_services.get_heatmap(
-        a.get("date"), a.get("bbox"), a.get("layer", "risk"), a.get("format", "geojson"))
+        a.get("date"), a.get("bbox"), a.get("layer", "risk"), a.get("format", "geojson"), a.get("limit"), a.get("offset"))
     return jsonify(result), 200

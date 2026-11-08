@@ -1,7 +1,43 @@
 # EmberGrid backend
 
-## Demo: fire history grid over India
+Flask + PostgreSQL API for fire-risk maps and fire history. Endpoint reference: [`docs/API.md`](../docs/API.md).
+Background for the model person: [`docs/MODELING_HANDOFF.md`](../docs/MODELING_HANDOFF.md).
 
+## Run it (after the data is loaded)
+
+From `backend/`:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env            # then edit DATABASE_URL, JWT_SECRET_KEY, CORS_ORIGINS
+
+# one-time SQL (in order; see db/sql/README.md): 006 fire view + data window, 007 label layer, 008 feature window
+psql -d firemap_real -f db/sql/006_fire_view.sql -f db/sql/007_label_layer_v_fire.sql -f db/sql/008_feature_window.sql
+
+# after the data load (python -m app.jobs.load_ndvi features 2018-04-01 2020-12-31 and the steps before it):
+python -m app.jobs.predict_day 2018-04-01 2020-12-31 15     # risk for every 15th day (about 70 days); drop the 15 to score every day
+python -m app.jobs.build_fire_grid                          # fire history map; must end with OK
+
+python run.py                                               # http://localhost:5000
+```
+
+Check it: `curl localhost:5000/health`, `curl localhost:5000/api/v1/status`, open `http://localhost:5000/map`.
+Production: `gunicorn --bind 0.0.0.0:5000 --workers 2 run:app` with `FLASK_ENV=production` (needs `JWT_SECRET_KEY` and `CORS_ORIGINS`), or the `Dockerfile`.
+
+Without the `predict_day` step the `risk` layer has no data for the loaded years. The `ndvi` and `fwi` layers, the cell endpoints and the
+fire history work without it. A date range is only visible in the `risk` layer for the days that were scored.
+
+### Tests
+
+```bash
+createdb embergrid_pytest                    # scratch database: its name must contain "test", all its tables are rebuilt
+export TEST_DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@localhost:5432/embergrid_pytest
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+## Demo: fire history grid over India
 A map of India split into 0.1 degree cells (about 11 km). Each cell is coloured by the number of
 fires detected there up to the month chosen on the slider (cumulative). Only `fire_events` is used.
 

@@ -1,15 +1,15 @@
 from flask import current_app
 from sqlalchemy import func
-from app.constants import CELL_SIZE_DEG, COORD_DECIMALS, MAX_CELLS_PER_REQUEST
+from app.constants import CELL_SIZE_DEG, COORD_DECIMALS, DEFAULT_CELLS_PER_REQUEST, MAX_CELLS_PER_REQUEST
 from app.errors import APIError, NotFound
 from app.extensions import db
 from app.ml import LEVEL_BREAKS, get_model, risk_level
 from app.models.cell import Cell
 from app.models.daily_features import DailyFeature
 from app.models.risk_prediction import RiskPrediction
-from app.utils.params import parse_bbox, parse_date
+from app.utils.params import parse_bbox, parse_date, parse_int
 
-LAYERS = {"risk", "ndvi", "ndmi", "fwi"}
+LAYERS = {"risk", "ndvi", "fwi"}   # ndmi is not produced by any loader yet
 FORMATS = {"geojson", "tiles"}
 
 def _legend():
@@ -38,12 +38,14 @@ def _tile_response(d, layer, bbox, meta):
 
 
 
-def get_heatmap(date_str, bbox_str, layer, fmt="geojson"):
+def get_heatmap(date_str, bbox_str, layer, fmt="geojson", limit_str=None, offset_str=None):
     if layer not in LAYERS:
         raise APIError(f"layer must be one of {sorted(LAYERS)}")
     if fmt not in FORMATS:
         raise APIError(f"format must be one of {sorted(FORMATS)}")
     bbox = parse_bbox(bbox_str)
+    limit = parse_int(limit_str, "limit", DEFAULT_CELLS_PER_REQUEST, 1, MAX_CELLS_PER_REQUEST)
+    offset = parse_int(offset_str, "offset", 0, 0, 10**9)
     model = get_model()
     
     #picking the source table and value column for this layer
@@ -84,7 +86,8 @@ def get_heatmap(date_str, bbox_str, layer, fmt="geojson"):
         q = q.filter(Cell.lon >= min_lon, Cell.lon <= max_lon,
                      Cell.lat >= min_lat, Cell.lat <= max_lat)
     total = q.count()
-    rows = q.order_by(Cell.cell_id).limit(MAX_CELLS_PER_REQUEST).all()
+    rows = q.order_by(Cell.cell_id).offset(offset).limit(limit).all()
+    next_offset = offset + len(rows) if offset + len(rows) < total else None
 
     features, west, south, east, north = [], 180.0, 90.0, -180.0, -90.0
     h = CELL_SIZE_DEG / 2
@@ -104,7 +107,8 @@ def get_heatmap(date_str, bbox_str, layer, fmt="geojson"):
 
     out = {"type": "FeatureCollection", "features": features,
            "metadata": {**meta, "cell_count": len(features), "total_matching": total,
-                        "truncated": total > len(features)}}
+                        "offset": offset, "limit": limit, "next_offset": next_offset,
+                        "truncated": next_offset is not None}}
     if features:   # RFC 7946 optional `bbox` member: [west, south, east, north]
         out["bbox"] = [round(west, COORD_DECIMALS), round(south, COORD_DECIMALS),
                        round(east, COORD_DECIMALS), round(north, COORD_DECIMALS)]

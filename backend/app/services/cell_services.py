@@ -17,7 +17,6 @@ def _get_cell(cell_id):
 
 TIMESERIES_FEATURES = {
     "ndvi": {"label": "Vegetation Index (NDVI)", "unit": ""},
-    "ndmi": {"label": "Moisture Index (NDMI)", "unit": ""},
     "fwi": {"label": "Fire Weather Index", "unit": ""},
     "rainfall_mm": {"label": "Rainfall", "unit": "mm"},
     "temp_c": {"label": "Temperature", "unit": "°C"},

@@ -7,7 +7,7 @@ Design points for scale:
   * each batch commits; a failing date is rolled back, recorded, and the job moves on
   * idempotent: re-running a date overwrites that (cell, date, model_version) row
 
-Usage:  python -m app.jobs.predict_day 2023-02-01 2023-04-30
+Usage:  python -m app.jobs.predict_day 2023-02-01 2023-04-30 [STEP_DAYS]   (STEP_DAYS=15 scores every 15th day)
 """
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -59,7 +59,7 @@ def _score_day(d, model):
     return written, after - before
 
 
-def run(start: date, end: date):
+def run(start: date, end: date, step: int = 1):
     model = get_model()
     job = IngestionRun(source=f"model:{model.version}", job_type="predict_day",
                        start_date=start, end_date=end, status="running")
@@ -76,7 +76,7 @@ def run(start: date, end: date):
         except Exception as exc:                      # isolate the bad day, keep going
             db.session.rollback()
             failed.append(f"{d}: {str(exc)[:120]}")
-        d += timedelta(days=1)
+        d += timedelta(days=step)
     job.records_read, job.records_inserted, job.records_updated = read, ins, read - ins
     job.finished_at = datetime.now(timezone.utc)
     job.status = "failed" if failed else "success"
@@ -87,7 +87,8 @@ def run(start: date, end: date):
 
 if __name__ == "__main__":
     s, e = (date.fromisoformat(a) for a in sys.argv[1:3])
+    step = int(sys.argv[3]) if len(sys.argv) > 3 else 1
     with create_app().app_context():
-        j = run(s, e)
+        j = run(s, e, step)
         print(f"run {j.id}: {j.status} read={j.records_read} inserted={j.records_inserted} "
               f"updated={j.records_updated} {j.error_message or ''}")

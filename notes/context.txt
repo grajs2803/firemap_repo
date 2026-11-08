@@ -70,3 +70,11 @@ See backend/README.md. In short: set DATABASE_URL in backend/.env, python -m app
   Tested on the test DB (label and fires_7d recomputed independently: 0 mismatches). Not yet run on firemap_real.
 - docs/MODELING_HANDOFF.md is the document for the model person.
 - Next ideas: forest mask, weather download for 2021-2024, move Postgres to the NVMe, serve extra features in build_feature_row, trained-model loader + calibration + backtest job.
+
+9. FINAL SERVING VERSION (2026-11-08)
+- Owner decision: backend only, no training now. API for a frontend: docs/API.md. Tests: backend/tests (needs TEST_DATABASE_URL, a scratch DB whose name contains "test").
+- Heatmap: limit (default 15000, max 20000) + offset, metadata.next_offset; ndmi removed (no loader); CORS (CORS_ORIGINS), gzip, one error shape incl. auth,
+  /health checks DB, /api/v1/status shows what data is loaded, production config requires JWT_SECRET_KEY and CORS_ORIGINS.
+- risk layer needs risk_predictions for the ACTIVE model version: run predict_day over the loaded years (optional step argument, e.g. every 15th day).
+- build_fire_grid has build() (used by tests) and run().
+- Not done: real tile server (format=tiles is a stub), protecting data endpoints with auth, ndmi, 2021+ weather, Docker not tested here.

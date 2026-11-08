@@ -11,3 +11,6 @@ numpy
 pandas
 requests
 pyarrow
+flask-cors
+flask-compress
+gunicorn
