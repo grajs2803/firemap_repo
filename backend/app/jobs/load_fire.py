@@ -49,6 +49,7 @@ def ingest_firms_df(df: pd.DataFrame, source: str):
         d.to_csv(buf, index=False, header=False, na_rep="\\N")
         buf.seek(0)
         cur.copy_expert("COPY tmp_fire FROM STDIN WITH (FORMAT csv, NULL '\\N')", buf)
+        cur.execute("ANALYZE tmp_fire")
         cur.execute("""INSERT INTO fire_events (event_key, cell_id, latitude, longitude, detected_at, local_date, satellite,
                                                 instrument, confidence, frp, brightness, detection_type, source)
                        SELECT t.event_key, c.cell_id, t.latitude, t.longitude, t.detected_at, t.local_date, t.satellite,
@@ -57,6 +58,7 @@ def ingest_firms_df(df: pd.DataFrame, source: str):
                         WHERE NOT EXISTS (SELECT 1 FROM fire_events e
                                            WHERE e.local_date BETWEEN %s AND %s AND e.detected_at = t.detected_at
                                              AND e.latitude = t.latitude AND e.longitude = t.longitude)
+                       ORDER BY t.event_key
                        ON CONFLICT DO NOTHING""", (lo, hi))
         inserted = cur.rowcount
         conn.commit()

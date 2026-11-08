@@ -14,7 +14,7 @@ def _origins():
 
 class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "postgresql+psycopg2://fireheatmap:fireheatmap@localhost:5432/firemap"
+        "DATABASE_URL", "postgresql+psycopg2://fireheatmap:fireheatmap@localhost:5432/firemap_real"
     )
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
     TILE_SERVER_URL = os.environ.get("TILE_SERVER_URL", "http://localhost:8000/tiles")
