@@ -26,9 +26,10 @@ def create_app(env=None):
     from app.routes.history_routes import history_bp
     app.register_blueprint(history_bp, url_prefix="/api/v1/history")
 
+    app.json.compact = True
+
     @app.get("/map")
     def history_map():
-        # minimal demo page: grid of past fires over India (see static/history_map.html)
         return app.send_static_file("history_map.html")
 
     

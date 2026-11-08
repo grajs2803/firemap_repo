@@ -11,36 +11,24 @@
   #panel { position: absolute; z-index: 1000; bottom: 24px; left: 10px; width: 270px; padding: 10px 12px;
            background: rgba(255,255,255,.94); border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,.3); }
   #panel h1 { font-size: 14px; margin: 0 0 6px; }
-  #panel label { display: block; margin: 6px 0 2px; color: #444; }
-  #panel input[type=range] { width: 100%; }
+  #panel input { width: 100%; }
   #month { font-weight: 600; font-size: 15px; }
   #stats, #hover { color: #444; margin-top: 4px; min-height: 18px; }
   #legend { height: 10px; margin-top: 8px; border-radius: 2px;
             background: linear-gradient(to right, #ffffb2, #fecc5c, #fd8d3c, #e31a1c, #7f0000); }
   #legend-labels { display: flex; justify-content: space-between; color: #555; font-size: 11px; }
-  #msg { color: #b00020; margin-top: 6px; }
-  button { padding: 3px 10px; }
+  #msg { color: #b00020; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="panel">
-  <h1>Past fires over India</h1>
-  <div id="month">...</div>
+  <h1>Past fires over India (cumulative)</h1>
+  <div id="month"></div>
   <input id="slider" type="range" min="0" max="0" value="0">
-  <div>
-    <button id="play">Play</button>
-    <label style="display:inline"><input id="cum" type="checkbox"> cumulative</label>
-  </div>
-  <label for="res">Grid size</label>
-  <select id="res">
-    <option value="1.0">1.0&deg; (about 110 km)</option>
-    <option value="0.5" selected>0.5&deg; (about 55 km)</option>
-    <option value="0.1">0.1&deg; (about 11 km)</option>
-  </select>
   <div id="stats"></div>
   <div id="legend"></div>
-  <div id="legend-labels"><span>1</span><span id="legend-max">max</span></div>
+  <div id="legend-labels"><span>1</span><span id="legend-max"></span></div>
   <div id="hover"></div>
   <div id="msg"></div>
 </div>
@@ -48,13 +36,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 const API = "/api/v1/history";
-const STOPS = [[255,255,178],[254,204,92],[253,141,60],[227,26,28],[127,0,0]];   // light -> dark red
+const STOPS = [[255,255,178],[254,204,92],[253,141,60],[227,26,28],[127,0,0]];
+const $ = id => document.getElementById(id);
 
 const map = L.map("map", { zoomAnimation: false, minZoom: 4, maxZoom: 10 }).setView([22.5, 80], 5);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
 
-// Count -> colour on a log scale: t = ln(1 + n) / ln(1 + nmax)
 function colour(n, nmax) {
   const t = Math.min(1, Math.log(1 + n) / Math.log(1 + nmax));
   const x = t * (STOPS.length - 1), i = Math.min(STOPS.length - 2, Math.floor(x)), f = x - i;
@@ -62,101 +50,69 @@ function colour(n, nmax) {
   return `rgba(${c[0]},${c[1]},${c[2]},0.8)`;
 }
 
-// One canvas over the map; each cell is a rectangle computed from its row/col.
-const Grid = L.Layer.extend({
-  onAdd(m) {
-    this._m = m;
-    this._c = L.DomUtil.create("canvas", "grid-canvas");
-    this._c.style.pointerEvents = "none";
-    m.getPanes().overlayPane.appendChild(this._c);
-    m.on("moveend zoomend resize", this._reset, this);
-    this._reset();
-  },
-  onRemove(m) { m.off("moveend zoomend resize", this._reset, this); this._c.remove(); },
-  setData(d, nmax) { this._d = d; this._nmax = nmax; this._draw(); },
-  _reset() {
-    const s = this._m.getSize();
-    L.DomUtil.setPosition(this._c, this._m.containerPointToLayerPoint([0, 0]));
-    this._c.width = s.x; this._c.height = s.y;
-    this._draw();
-  },
-  _draw() {
-    const ctx = this._c.getContext("2d"), m = this._m;
-    ctx.clearRect(0, 0, this._c.width, this._c.height);
-    if (!this._d) return;
-    const deg = this._d.cell_deg, W = this._c.width, H = this._c.height;
-    for (const [r, c, n] of this._d.cells) {
-      const a = m.latLngToContainerPoint([(r + 1) * deg, c * deg]);        // north-west corner
-      const b = m.latLngToContainerPoint([r * deg, (c + 1) * deg]);        // south-east corner
-      if (b.x < 0 || a.x > W || b.y < 0 || a.y > H) continue;            // outside the view
-      ctx.fillStyle = colour(n, this._nmax);
-      ctx.fillRect(a.x, a.y, Math.max(1, b.x - a.x), Math.max(1, b.y - a.y));
-    }
+const canvas = L.DomUtil.create("canvas");
+canvas.style.pointerEvents = "none";
+map.getPanes().overlayPane.appendChild(canvas);
+let data = null, nmax = 0, lookup = new Map();
+
+function draw() {
+  const size = map.getSize();
+  L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
+  canvas.width = size.x;
+  canvas.height = size.y;
+  if (!data) return;
+  const ctx = canvas.getContext("2d"), d = data.cell_deg;
+  for (const [r, c, n] of data.cells) {
+    const a = map.latLngToContainerPoint([(r + 1) * d, c * d]);
+    const b = map.latLngToContainerPoint([r * d, (c + 1) * d]);
+    if (b.x < 0 || a.x > size.x || b.y < 0 || a.y > size.y) continue;
+    ctx.fillStyle = colour(n, nmax);
+    ctx.fillRect(a.x, a.y, Math.max(1, b.x - a.x), Math.max(1, b.y - a.y));
   }
+}
+map.on("moveend zoomend resize", draw);
+
+let months = [], latest = 0;
+
+async function show() {
+  const to = months[$("slider").value], mine = ++latest;
+  $("month").textContent = "Up to " + new Date(to + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  const r = await fetch(`${API}/grid?to=${to}`);
+  const d = await r.json();
+  if (mine !== latest) return;
+  if (!r.ok) { $("msg").textContent = d.error.message; return; }
+  $("msg").textContent = "";
+  nmax = nmax || d.max_count;
+  $("legend-max").textContent = nmax.toLocaleString() + " fires/cell";
+  $("stats").textContent = `${d.total_fires.toLocaleString()} fires in ${d.cell_count.toLocaleString()} cells`;
+  lookup = new Map(d.cells.map(([r, c, n]) => [r * 100000 + c, n]));
+  data = d;
+  draw();
+}
+
+map.on("mousemove", e => {
+  if (!data) return;
+  const r = Math.floor(e.latlng.lat / data.cell_deg + 1e-9), c = Math.floor(e.latlng.lng / data.cell_deg + 1e-9);
+  const n = lookup.get(r * 100000 + c);
+  $("hover").textContent = n ? `${n.toLocaleString()} fires in this cell` : "";
 });
-const grid = new Grid().addTo(map);
 
-const $ = id => document.getElementById(id);
-let months = [], lookup = new Map(), nmax = 1, ticket = 0, timer = null;
+$("slider").addEventListener("input", show);
 
-const label = ym => new Date(ym + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" });
-const error = t => { $("msg").textContent = t || ""; };
-
-async function loadMonths() {
+(async () => {
   const r = await fetch(API + "/months");
   const j = await r.json();
-  if (!r.ok) { error(j.error ? j.error.message : "Could not load months"); return false; }
-  // continuous month list so the slider has no holes
-  const have = new Set(j.months.map(m => m.ym));
-  let [y, m] = j.first.split("-").map(Number); const [ey, em] = j.last.split("-").map(Number);
+  if (!r.ok) { $("msg").textContent = j.error.message; return; }
+  let [y, m] = j.first.split("-").map(Number);
+  const [ey, em] = j.last.split("-").map(Number);
   while (y < ey || (y === ey && m <= em)) {
     months.push(`${y}-${String(m).padStart(2, "0")}-01`);
     if (++m > 12) { m = 1; y++; }
   }
   $("slider").max = months.length - 1;
-  return true;
-}
-
-async function draw() {
-  const i = +$("slider").value, cum = $("cum").checked, mine = ++ticket;
-  const from = cum ? months[0] : months[i], to = months[i];
-  $("month").textContent = (cum ? "Up to " : "") + label(to);
-  const r = await fetch(`${API}/grid?res=${$("res").value}&from=${from}&to=${to}`);
-  const d = await r.json();
-  if (mine !== ticket) return;                       // a newer request replaced this one
-  if (!r.ok) { error(d.error ? d.error.message : "Request failed"); return; }
-  error("");
-  nmax = Math.max(nmax, d.max_count, 1);             // keep the scale steady while playing
-  $("legend-max").textContent = nmax.toLocaleString() + " fires/cell";
-  lookup = new Map(d.cells.map(([rr, cc, n]) => [rr * 100000 + cc, n]));
-  $("stats").textContent = `${d.total_fires.toLocaleString()} fires in ${d.cell_count.toLocaleString()} cells`;
-  grid.setData(d, nmax);
-}
-
-function resetScale() { nmax = 1; draw(); }
-
-map.on("mousemove", e => {
-  const d = grid._d; if (!d) return;
-  const r = Math.floor(e.latlng.lat / d.cell_deg + 1e-9), c = Math.floor(e.latlng.lng / d.cell_deg + 1e-9);
-  const n = lookup.get(r * 100000 + c);
-  $("hover").textContent = n ? `${n.toLocaleString()} fires in this cell` : "";
-});
-
-$("slider").addEventListener("input", draw);
-$("cum").addEventListener("change", resetScale);
-$("res").addEventListener("change", resetScale);
-$("play").addEventListener("click", () => {
-  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "Play"; return; }
-  $("play").textContent = "Pause";
-  if (+$("slider").value >= months.length - 1) $("slider").value = 0;
-  timer = setInterval(() => {
-    const s = $("slider");
-    if (+s.value >= months.length - 1) { clearInterval(timer); timer = null; $("play").textContent = "Play"; return; }
-    s.value = +s.value + 1; draw();
-  }, 700);
-});
-
-loadMonths().then(ok => { if (ok) { $("slider").value = 0; draw(); } });
+  $("slider").value = months.length - 1;
+  show();
+})();
 </script>
 </body>
 </html>
