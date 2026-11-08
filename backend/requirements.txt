@@ -6,5 +6,7 @@ psycopg2-binary==2.9.13
 python-dotenv==1.2.4
 PyJWT==2.15.1
 pwdlib[argon2]==0.3.1
-Rasterio: 1.4.4
+rasterio==1.4.4
+numpy
+pandas
 requests
