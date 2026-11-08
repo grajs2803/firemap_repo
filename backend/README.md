@@ -26,7 +26,25 @@ The job ends with `OK` when the grid total equals the `fire_events` total. Re-ru
 |---|---|
 | `GET /map` | the page |
 | `GET /api/v1/history/months` | `{first, last}` month with data |
+| `GET /api/v1/history/risk?date=YYYY-MM-DD` | mean `calibrated_prob` per 0.1 degree block for the active model (default: latest date with predictions) |
+| `GET /api/v1/history/detail?bbox=w,s,e,n&to=YYYY-MM-DD` | fire counts per 0.01 degree cell inside the bbox (max 9 square degrees, 30,000 cells) |
 | `GET /api/v1/history/grid?to=YYYY-MM-DD` | cells `[row, col, count]` summed from the first month up to `to` (default: all) |
 
 Cell rectangle: south = row x 0.1, north = (row + 1) x 0.1, west = col x 0.1, east = (col + 1) x 0.1.
 A fire is a `fire_events` row with confidence `n` or `h` and detection type 0 (or NULL).
+
+### Page controls
+
+History / Risk toggle at the top of the panel. In History mode, zooming to level 9 or closer swaps the 0.1 degree
+grid for 0.01 degree cells of the current viewport. Risk mode only shows areas that have predictions (the pilot districts).
+
+### Loading more fire history
+
+```bash
+export FIRMS_MAP_KEY=your_key
+python -m app.jobs.backfill_fire 2024-03-19 2025-12-31 [SOURCE]   # default source VIIRS_NOAA20_SP, one request per month
+python -m app.jobs.build_fire_grid
+```
+
+Re-running is safe (duplicates are skipped). Use `run_daily` for the most recent days; `purge_nrt` removes NRT rows that overlap SP data.
+Only rows with a `cell_id` are counted, so fires outside the loaded cells are ignored.

@@ -1,5 +1,5 @@
 EMBERGRID - CONTEXT FOR CLAUDE (read this first in a new session)
-Last updated: 2026-11-08
+Last updated: 2026-11-08 (steps 2-5 done)
 
 1. PROJECT
 Forest-fire risk heatmap for India (CS 699 / M.Tech project). Repo: github.com/grajs2803/firemap_repo,
@@ -10,8 +10,7 @@ minimal code; time is tight. Teach like a senior engineer, include the maths and
 - Grid: 0.01 degree cells anchored at (0,0). cell_id = r{row:04d}c{col:04d}, row = floor(round(lat/0.01, 9)).
 - Tables in DB firemap_real: cells (~2.9M), fire_events, daily_features (partitioned by month),
   risk_predictions, ingest_scope, ingestion_runs, weather_points, cell_weather_map, weather_daily,
-  ndvi_composites, users, refresh_sessions. Five SQL files (pilot, mvp, weather, ndvi, daily) were run by
-  hand in psql and are NOT in the repo yet.
+  ndvi_composites, users, refresh_sessions. Five SQL files (pilot, mvp, weather, ndvi, daily) are in backend/db/sql/ (see its README for order).
 - Pilot area: West Singhbhum + Bastar (10,800 cells). Daily pipeline: python -m app.jobs.run_daily.
 - Dummy model dummy-0.2.0 (fwi, ndvi, rainfall_mm); no trained model. Slope, road distance and fire
   spread rate were deliberately dropped.
@@ -31,6 +30,8 @@ minimal code; time is tight. Teach like a senior engineer, include the maths and
 - Tested on a test DB (606,858 VIIRS rows for 2022, 436,602 pass the filter): grid total equals SQL total.
 
 4. NOT DONE / IDEAS FOR LATER (in rough priority)
+- DONE on this branch: SQL files, backfill_fire.py (national FIRMS, monthly chunks), /history/risk + History/Risk toggle, /history/detail + zoom>=9 0.01 degree cells.
+- Fire grid only counts rows with cell_id (clips to India); check NULL cell_id share after a backfill.
 - Push the branch and open the PR (Claude's session had no GitHub write access; the owner pushes from a bundle).
 - Commit the five SQL files under backend/db/sql/ so a fresh DB can be rebuilt.
 - Add live FIRMS days to the history map (run_daily already writes fire_events; re-run build_fire_grid).

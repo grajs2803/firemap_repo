@@ -11,7 +11,7 @@
   #panel { position: absolute; z-index: 1000; bottom: 24px; left: 10px; width: 270px; padding: 10px 12px;
            background: rgba(255,255,255,.94); border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,.3); }
   #panel h1 { font-size: 14px; margin: 0 0 6px; }
-  #panel input { width: 100%; }
+  #panel input[type=range] { width: 100%; }
   #month { font-weight: 600; font-size: 15px; }
   #stats, #hover { color: #444; margin-top: 4px; min-height: 18px; }
   #legend { height: 10px; margin-top: 8px; border-radius: 2px;
@@ -23,12 +23,14 @@
 <body>
 <div id="map"></div>
 <div id="panel">
-  <h1>Past fires over India (cumulative)</h1>
+  <h1>EmberGrid</h1>
+  <label><input type="radio" name="mode" value="history" checked> History</label>
+  <label><input type="radio" name="mode" value="risk"> Risk</label>
   <div id="month"></div>
   <input id="slider" type="range" min="0" max="0" value="0">
   <div id="stats"></div>
   <div id="legend"></div>
-  <div id="legend-labels"><span>1</span><span id="legend-max"></span></div>
+  <div id="legend-labels"><span id="legend-min">1</span><span id="legend-max"></span></div>
   <div id="hover"></div>
   <div id="msg"></div>
 </div>
@@ -36,6 +38,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 const API = "/api/v1/history";
+const DETAIL_ZOOM = 9;
 const STOPS = [[255,255,178],[254,204,92],[253,141,60],[227,26,28],[127,0,0]];
 const $ = id => document.getElementById(id);
 
@@ -44,7 +47,7 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
 
 function colour(n, nmax) {
-  const t = Math.min(1, Math.log(1 + n) / Math.log(1 + nmax));
+  const t = mode === "risk" ? Math.min(1, n / 0.5) : Math.min(1, Math.log(1 + n) / Math.log(1 + nmax));
   const x = t * (STOPS.length - 1), i = Math.min(STOPS.length - 2, Math.floor(x)), f = x - i;
   const c = STOPS[i].map((v, k) => Math.round(v + (STOPS[i + 1][k] - v) * f));
   return `rgba(${c[0]},${c[1]},${c[2]},0.8)`;
@@ -54,23 +57,50 @@ const canvas = L.DomUtil.create("canvas");
 canvas.style.pointerEvents = "none";
 map.getPanes().overlayPane.appendChild(canvas);
 let data = null, nmax = 0, lookup = new Map();
+let detail = null, dlookup = new Map(), dmax = 1, mode = "history", showRisk = null;
+const view = () => (mode === "history" && detail && map.getZoom() >= DETAIL_ZOOM) ? detail : data;
+const scale = () => view() === detail ? dmax : nmax;
 
 function draw() {
   const size = map.getSize();
   L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
   canvas.width = size.x;
   canvas.height = size.y;
-  if (!data) return;
-  const ctx = canvas.getContext("2d"), d = data.cell_deg;
-  for (const [r, c, n] of data.cells) {
+  const v = view();
+  if (!v) return;
+  const ctx = canvas.getContext("2d"), d = v.cell_deg, top = scale();
+  for (const [r, c, n] of v.cells) {
     const a = map.latLngToContainerPoint([(r + 1) * d, c * d]);
     const b = map.latLngToContainerPoint([r * d, (c + 1) * d]);
     if (b.x < 0 || a.x > size.x || b.y < 0 || a.y > size.y) continue;
-    ctx.fillStyle = colour(n, nmax);
+    ctx.fillStyle = colour(n, top);
     ctx.fillRect(a.x, a.y, Math.max(1, b.x - a.x), Math.max(1, b.y - a.y));
   }
 }
-map.on("moveend zoomend resize", draw);
+map.on("resize", draw);
+map.on("moveend zoomend", () => { draw(); loadDetail(); });
+
+let dticket = 0;
+async function loadDetail() {
+  if (mode !== "history" || map.getZoom() < DETAIL_ZOOM) { detail = null; draw(); legend(); return; }
+  const b = map.getBounds(), mine = ++dticket;
+  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(x => x.toFixed(4)).join(",");
+  const r = await fetch(`${API}/detail?bbox=${bbox}&to=${months[$("slider").value]}`);
+  const d = await r.json();
+  if (mine !== dticket || mode !== "history") return;
+  if (!r.ok) { $("msg").textContent = d.error.message; return; }
+  $("msg").textContent = d.truncated ? "Too many cells here, zoom in further." : "";
+  detail = d;
+  dmax = Math.max(3, ...d.cells.map(x => x[2]));
+  dlookup = new Map(d.cells.map(([r, c, n]) => [r * 100000 + c, n]));
+  draw(); legend();
+}
+
+function legend() {
+  const d = view() === detail;
+  $("legend-min").textContent = mode === "risk" ? "0" : "1";
+  $("legend-max").textContent = mode === "risk" ? "50%+ chance" : scale().toLocaleString() + (d ? " fires/0.01° cell" : " fires/cell");
+}
 
 let months = [], latest = 0;
 
@@ -83,18 +113,44 @@ async function show() {
   if (!r.ok) { $("msg").textContent = d.error.message; return; }
   $("msg").textContent = "";
   nmax = nmax || d.max_count;
-  $("legend-max").textContent = nmax.toLocaleString() + " fires/cell";
+  legend();
   $("stats").textContent = `${d.total_fires.toLocaleString()} fires in ${d.cell_count.toLocaleString()} cells`;
   lookup = new Map(d.cells.map(([r, c, n]) => [r * 100000 + c, n]));
   data = d;
   draw();
+  loadDetail();
 }
 
+async function showRiskLayer() {
+  const mine = ++latest;
+  const r = await fetch(`${API}/risk`);
+  const d = await r.json();
+  if (mine !== latest || mode !== "risk") return;
+  if (!r.ok) { $("msg").textContent = d.error.message; return; }
+  $("msg").textContent = "";
+  $("month").textContent = "Risk on " + d.date;
+  $("stats").textContent = `model ${d.model}, ${d.cells.length.toLocaleString()} cells (only pilot areas have predictions)`;
+  showRisk = d;
+  data = d;
+  lookup = new Map(d.cells.map(([r, c, p]) => [r * 100000 + c, p]));
+  draw();
+  legend();
+}
+
+document.querySelectorAll("input[name=mode]").forEach(el => el.addEventListener("change", () => {
+  mode = el.value;
+  $("slider").style.display = mode === "risk" ? "none" : "";
+  $("msg").textContent = "";
+  data = null; detail = null; draw();
+  mode === "risk" ? showRiskLayer() : show();
+}));
+
 map.on("mousemove", e => {
-  if (!data) return;
-  const r = Math.floor(e.latlng.lat / data.cell_deg + 1e-9), c = Math.floor(e.latlng.lng / data.cell_deg + 1e-9);
-  const n = lookup.get(r * 100000 + c);
-  $("hover").textContent = n ? `${n.toLocaleString()} fires in this cell` : "";
+  const v = view();
+  if (!v) return;
+  const r = Math.floor(e.latlng.lat / v.cell_deg + 1e-9), c = Math.floor(e.latlng.lng / v.cell_deg + 1e-9);
+  const n = (v === detail ? dlookup : lookup).get(r * 100000 + c);
+  $("hover").textContent = !n ? "" : mode === "risk" ? `${(n * 100).toFixed(1)}% mean fire probability` : `${n.toLocaleString()} fires in this cell`;
 });
 
 $("slider").addEventListener("input", show);
