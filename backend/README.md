@@ -22,6 +22,9 @@ python -m app.jobs.build_fire_grid                          # fire history map; 
 python run.py                                               # http://localhost:5000
 ```
 
+The map page (`/map`) shows a card when you rest the mouse on a place: its name, fires per year as a bar chart, and the latest NDVI, fire weather index,
+temperature, rain, wind and predicted risk (conditions exist only inside the pilot districts). It uses `GET /api/v1/history/point`.
+
 Check it: `curl localhost:5000/health`, `curl localhost:5000/api/v1/status`, open `http://localhost:5000/map`.
 Production: `gunicorn --bind 0.0.0.0:5000 --workers 2 run:app` with `FLASK_ENV=production` (needs `JWT_SECRET_KEY` and `CORS_ORIGINS`), or the `Dockerfile`.
 

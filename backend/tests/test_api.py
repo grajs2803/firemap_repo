@@ -155,3 +155,28 @@ def test_auth_flow_and_error_shape(client):
     assert new.status_code == 200 and "access_token" in new.get_json()
     out = client.post("/api/v1/auth/logout", json={"refresh_token": new.get_json().get("refresh_token", tokens["refresh_token"])})
     assert out.status_code == 200
+
+
+def test_point_block_and_cell(client):
+    j = client.get("/api/v1/history/point?lat=22.0052&lon=85.0051").get_json()
+    assert j["cell_id"] == "r2200c8500" and j["place"] == {"state": None, "district": "D1", "label": "D1"}
+    assert j["elevation"] == 500.0
+    f = j["fires"]
+    assert f["deg"] == 0.1 and f["total"] == 3 and [b["year"] for b in f["yearly"]] == list(range(2018, 2025))
+    assert {b["year"]: b["n"] for b in f["yearly"]}[2019] == 3
+    assert [b["year"] for b in f["yearly"] if b["partial"]] == [2018, 2024]
+    assert j["latest"]["date"] == "2019-04-11" and j["latest"]["ndvi"] == 0.5 and j["latest"]["fwi"] == 12.0
+    assert j["latest"]["risk"]["level"] in {"low", "moderate", "high", "extreme"}
+    c = client.get("/api/v1/history/point?lat=22.0052&lon=85.0051&deg=0.01").get_json()["fires"]
+    assert c["deg"] == 0.01 and c["total"] == 2          # e1, e2 (e4 low confidence, e6 type 2, e7 outside window)
+
+
+def test_point_without_a_mapped_cell(client):
+    j = client.get("/api/v1/history/point?lat=30&lon=70").get_json()
+    assert j["place"] is None and j["latest"] is None and j["fires"]["total"] == 0
+
+
+@pytest.mark.parametrize("q", ["lat=abc&lon=85", "lat=99&lon=85", "lat=22&lon=1", "lat=22&lon=85&deg=0.5", "lon=85"])
+def test_point_bad_parameters(client, q):
+    r = client.get(f"/api/v1/history/point?{q}")
+    assert r.status_code == 400 and error_code(r) == "bad_request"

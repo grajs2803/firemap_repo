@@ -77,4 +77,5 @@ See backend/README.md. In short: set DATABASE_URL in backend/.env, python -m app
   /health checks DB, /api/v1/status shows what data is loaded, production config requires JWT_SECRET_KEY and CORS_ORIGINS.
 - risk layer needs risk_predictions for the ACTIVE model version: run predict_day over the loaded years (optional step argument, e.g. every 15th day).
 - build_fire_grid has build() (used by tests) and run().
+- /map hover card (2026-11-08): GET /api/v1/history/point -> name, fires per year (0.1 block from fire_grid_01, 0.01 cell from v_fire), latest daily_features + live risk. build_fire_grid also creates ix_fire_grid_01_rc.
 - Not done: real tile server (format=tiles is a stub), protecting data endpoints with auth, ndmi, 2021+ weather, Docker not tested here.

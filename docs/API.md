@@ -56,6 +56,7 @@ A fire is a satellite detection with confidence `n` or `h`, detection type 0, in
 | `GET /api/v1/history/months` | `{first, last}` months with data |
 | `GET /api/v1/history/grid?to=` | `{cell_deg: 0.1, cell_count, total_fires, max_count, cells: [[row, col, count], ...]}` summed from the first month up to `to`. Cell south-west corner = `(row * 0.1, col * 0.1)` |
 | `GET /api/v1/history/detail?bbox=&to=` | same idea at `cell_deg: 0.01`, only inside `bbox` (required, at most 9 square degrees); `truncated: true` if more than 30000 cells |
+| `GET /api/v1/history/point?lat=&lon=&deg=` | everything for a hover card at one point (`deg` = `0.1` block, default, or `0.01` cell): `cell_id`, `place{state,district,label}`, `elevation`, `fires{deg,area,total,yearly[{year,n,partial}],from,to}` (one entry per year of the data window; `partial` = the window covers only part of that year), `latest{date,ndvi,fwi,temp_c,rainfall_mm,wind_speed,risk{probability,level,model_version}}` or `null` outside the pilot districts. `place` is `null` where no cell exists. 400 for coordinates outside 6-38 N, 67-98 E |
 | `GET /api/v1/history/risk?date=` | mean predicted probability per 0.1 degree block `[row, col, p]` for the active model (default: latest date) |
 
 ## Authentication

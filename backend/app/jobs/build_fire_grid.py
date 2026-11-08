@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS fire_grid_01 (
 )
 """
 
+INDEX = "CREATE INDEX IF NOT EXISTS ix_fire_grid_01_rc ON fire_grid_01 (grow, gcol)"
+
 INSERT = f"""
 INSERT INTO fire_grid_01 (ym, grow, gcol, n)
 SELECT date_trunc('month', local_date)::date,
@@ -37,6 +39,7 @@ def build():
     start, end = get_window()
     w = {"start": start, "end": end}
     db.session.execute(text(CREATE))
+    db.session.execute(text(INDEX))
     db.session.execute(text("DELETE FROM fire_grid_01"))
     cells = db.session.execute(text(INSERT), w).rowcount
     db.session.commit()

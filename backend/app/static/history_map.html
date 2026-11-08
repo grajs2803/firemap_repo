@@ -18,10 +18,22 @@
             background: linear-gradient(to right, #ffffb2, #fecc5c, #fd8d3c, #e31a1c, #7f0000); }
   #legend-labels { display: flex; justify-content: space-between; color: #555; font-size: 11px; }
   #msg { color: #b00020; }
+  #card { position: fixed; z-index: 1200; width: 272px; padding: 10px 12px; display: none; pointer-events: none;
+          background: rgba(255,255,255,.97); border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  #card.stale { opacity: .55; }
+  #card h2 { font-size: 14px; margin: 0; }
+  #card .sub { color: #666; font-size: 11px; margin-bottom: 6px; }
+  #card .sec { font-weight: 600; font-size: 12px; margin: 8px 0 2px; }
+  #card .note { color: #666; font-size: 11px; }
+  #card table { width: 100%; border-collapse: collapse; }
+  #card td { padding: 1px 0; } #card td:last-child { text-align: right; font-weight: 600; }
+  #card svg text { font: 10px system-ui, sans-serif; fill: #444; }
+  .pill { display: inline-block; padding: 0 7px; border-radius: 9px; color: #fff; font-size: 11px; }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="card"></div>
 <div id="panel">
   <h1>EmberGrid</h1>
   <label><input type="radio" name="mode" value="history" checked> History</label>
@@ -145,13 +157,90 @@ document.querySelectorAll("input[name=mode]").forEach(el => el.addEventListener(
   mode === "risk" ? showRiskLayer() : show();
 }));
 
+const card = $("card"), cache = new Map(), LEVEL = { low: "#2e7d32", moderate: "#f9a825", high: "#ef6c00", extreme: "#b71c1c" };
+let hoverTimer = null, hoverCtl = null, shownKey = null, last = { x: 0, y: 0 };
+
+function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function fmt(v, d = 2, unit = "") { return v == null ? "n/a" : (+v).toFixed(d) + unit; }
+
+function chart(bars) {
+  const W = 248, H = 84, base = 66, top = 12, max = Math.max(1, ...bars.map(b => b.n)), bw = W / bars.length;
+  const parts = bars.map((b, i) => {
+    const h = b.n ? Math.max(2, (b.n / max) * (base - top)) : 0, x = i * bw + 4;
+    return `<rect x="${x}" y="${base - h}" width="${bw - 8}" height="${h}" fill="#e31a1c" opacity="${b.partial ? .55 : 1}"><title>${b.year}${b.partial ? " (partial year)" : ""}: ${b.n} fires</title></rect>` +
+      (b.n ? `<text x="${x + (bw - 8) / 2}" y="${base - h - 2}" text-anchor="middle">${b.n}</text>` : "") +
+      `<text x="${x + (bw - 8) / 2}" y="${base + 12}" text-anchor="middle">${b.year}${b.partial ? "*" : ""}</text>`;
+  });
+  return `<svg width="${W}" height="${H}"><line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="#bbb"/>${parts.join("")}</svg>`;
+}
+
+function render(d) {
+  const f = d.fires, l = d.latest, p = d.place;
+  let h = `<h2>${esc(p ? p.label : "Unnamed area")}</h2><div class="sub">${d.cell_id ? esc(d.cell_id) + " &middot; " : ""}${d.lat.toFixed(3)}, ${d.lon.toFixed(3)}${d.elevation != null ? " &middot; " + Math.round(d.elevation) + " m" : ""}</div>`;
+  h += `<div class="sec">Fires per year (${f.total.toLocaleString()} in total)</div>${chart(f.yearly)}`;
+  h += `<div class="note">${esc(f.area)}; * = part of the year (data ${f.from} to ${f.to})</div>`;
+  if (l) {
+    h += `<div class="sec">Conditions on ${l.date}</div><table>` +
+      `<tr><td>NDVI (vegetation)</td><td>${fmt(l.ndvi)}</td></tr><tr><td>Fire weather index</td><td>${fmt(l.fwi, 1)}</td></tr>` +
+      `<tr><td>Temperature</td><td>${fmt(l.temp_c, 1, " &deg;C")}</td></tr><tr><td>Rainfall</td><td>${fmt(l.rainfall_mm, 1, " mm")}</td></tr>` +
+      `<tr><td>Wind</td><td>${fmt(l.wind_speed, 1, " m/s")}</td></tr>` +
+      `<tr><td>Predicted risk</td><td>${(l.risk.probability * 100).toFixed(1)}% <span class="pill" style="background:${LEVEL[l.risk.level]}">${l.risk.level}</span></td></tr></table>`;
+  } else {
+    h += `<div class="note" style="margin-top:6px">No daily conditions here (only the pilot districts have them).</div>`;
+  }
+  card.innerHTML = h;
+}
+
+function place(x, y) {
+  const w = card.offsetWidth, hh = card.offsetHeight;
+  card.style.left = Math.max(8, Math.min(x + 18, innerWidth - w - 8)) + "px";
+  card.style.top = Math.max(8, Math.min(y + 18, innerHeight - hh - 8)) + "px";
+}
+
+async function loadCard(latlng) {
+  const deg = view() === detail ? 0.01 : 0.1;
+  const key = `${deg}:${Math.floor(latlng.lat / 0.01 + 1e-9)}:${Math.floor(latlng.lng / 0.01 + 1e-9)}`;
+  if (key === shownKey) { card.classList.remove("stale"); return; }
+  let d = cache.get(key);
+  if (!d) {
+    if (hoverCtl) hoverCtl.abort();
+    hoverCtl = new AbortController();
+    try {
+      const r = await fetch(`${API}/point?lat=${latlng.lat.toFixed(5)}&lon=${latlng.lng.toFixed(5)}&deg=${deg}`, { signal: hoverCtl.signal });
+      if (!r.ok) { card.style.display = "none"; return; }
+      d = await r.json();
+      if (cache.size > 300) cache.clear();
+      cache.set(key, d);
+    } catch (e) { return; }
+  }
+  if (!d.place && !d.fires.total) { card.style.display = "none"; shownKey = null; return; }
+  shownKey = key;
+  render(d);
+  card.classList.remove("stale");
+  card.style.display = "block";
+  place(last.x, last.y);
+}
+
+function hideCard() { clearTimeout(hoverTimer); if (hoverCtl) hoverCtl.abort(); card.style.display = "none"; shownKey = null; }
+
+let moving = false;
+map.on("movestart zoomstart", () => { moving = true; hideCard(); });
+map.on("moveend zoomend", () => { moving = false; });
+
 map.on("mousemove", e => {
+  last = { x: e.originalEvent.clientX, y: e.originalEvent.clientY };
+  if (moving) return;
   const v = view();
-  if (!v) return;
-  const r = Math.floor(e.latlng.lat / v.cell_deg + 1e-9), c = Math.floor(e.latlng.lng / v.cell_deg + 1e-9);
-  const n = (v === detail ? dlookup : lookup).get(r * 100000 + c);
-  $("hover").textContent = !n ? "" : mode === "risk" ? `${(n * 100).toFixed(1)}% mean fire probability` : `${n.toLocaleString()} fires in this cell`;
+  if (v) {
+    const r = Math.floor(e.latlng.lat / v.cell_deg + 1e-9), c = Math.floor(e.latlng.lng / v.cell_deg + 1e-9);
+    const n = (v === detail ? dlookup : lookup).get(r * 100000 + c);
+    $("hover").textContent = !n ? "" : mode === "risk" ? `${(n * 100).toFixed(1)}% mean fire probability` : `${n.toLocaleString()} fires in this cell`;
+  }
+  if (card.style.display === "block") { card.classList.add("stale"); place(last.x, last.y); }
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => loadCard(e.latlng), 180);
 });
+map.on("mouseout", hideCard);
 
 $("slider").addEventListener("input", show);
 
