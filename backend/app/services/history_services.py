@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.errors import APIError, NotFound
 from app.extensions import db
 from app.utils.params import parse_bbox, parse_date
+from app.utils.window import get_window
 
 CELL_DEG = 0.1
 DETAIL_DEG = 0.01
@@ -66,14 +67,15 @@ def get_detail(bbox_str, to_str):
     w, s, e, n = bbox
     if (e - w) * (n - s) > MAX_BBOX_AREA:
         raise APIError(f"bbox too large (max {MAX_BBOX_AREA} square degrees); zoom in")
-    to = parse_date(to_str, "to") or date.max
+    start, end = get_window()
+    to = min(parse_date(to_str, "to") or date.max, end)
     rows = db.session.execute(text("""
         SELECT floor(round(c.lat::numeric / 0.01, 9))::int, floor(round(c.lon::numeric / 0.01, 9))::int, count(*)::int
-        FROM cells c JOIN fire_events f USING (cell_id)
+        FROM cells c JOIN v_fire f USING (cell_id)
         WHERE c.lat >= :s AND c.lat < :n AND c.lon >= :w AND c.lon < :e
-          AND f.confidence IN ('n', 'h') AND COALESCE(f.detection_type, 0) = 0 AND f.local_date <= :to
+          AND f.local_date BETWEEN :start AND :to
         GROUP BY 1, 2 LIMIT :lim"""),
-        {"s": s, "n": n, "w": w, "e": e, "to": to, "lim": DETAIL_LIMIT + 1}).all()
+        {"s": s, "n": n, "w": w, "e": e, "start": start, "to": to, "lim": DETAIL_LIMIT + 1}).all()
     truncated = len(rows) > DETAIL_LIMIT
     cells = [list(r) for r in rows[:DETAIL_LIMIT]]
     return {"cell_deg": DETAIL_DEG, "truncated": truncated, "cells": cells}

@@ -13,6 +13,7 @@ From `backend/`:
 python3 -m venv .venv && source .venv/bin/activate
 python -m pip install -r requirements.txt
 echo 'DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@localhost:5432/firemap_real' > .env
+psql -d firemap_real -f db/sql/006_fire_view.sql
 python -m app.jobs.build_fire_grid
 python run.py
 ```
@@ -46,5 +47,5 @@ python -m app.jobs.backfill_fire 2024-03-19 2025-12-31 [SOURCE]   # default sour
 python -m app.jobs.build_fire_grid
 ```
 
-Re-running is safe (duplicates are skipped). Use `run_daily` for the most recent days; `purge_nrt` removes NRT rows that overlap SP data.
+The backfill refuses dates outside `data_window` (2018-04-01 to 2024-03-18); widen the window first if you really want more. Re-running is safe (duplicates are skipped). Use `run_daily` for the most recent days; `purge_nrt` removes NRT rows that overlap SP data.
 Only rows with a `cell_id` are counted, so fires outside the loaded cells are ignored.

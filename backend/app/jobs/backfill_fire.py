@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from app import create_app
 from app.jobs.live import fetch_firms
 from app.jobs.load_fire import ingest_firms_df
+from app.utils.window import get_window
 
 INDIA_BBOX = (67.5, 6.0, 98.5, 37.5)
 
@@ -22,6 +23,9 @@ def run(start, end, source):
     if not key:
         sys.exit("set FIRMS_MAP_KEY first")
     with create_app().app_context():
+        lo, hi = get_window()
+        if start < lo or end > hi:
+            sys.exit(f"{start}..{end} is outside the data window {lo}..{hi} (table data_window)")
         for a, b in month_chunks(start, end):
             seen, new = ingest_firms_df(fetch_firms(key, source, INDIA_BBOX, a, b), source)
             print(f"{a} to {b}: {seen} in feed, {new} new")
