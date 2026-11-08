@@ -62,3 +62,11 @@ See backend/README.md. In short: set DATABASE_URL in backend/.env, python -m app
 - v_fire is the single fire definition. In the owner's data every row has detection_type 0, so old and new label counts are identical there.
 - daily_features currently has only two windows for the pilot (2020-02..04 with NDVI; 2026-06..10 without NDVI). To train, weather + NDVI for 2018-04..2024-03 must be loaded for the pilot districts (~23M rows; move Postgres to the NVMe first).
 - Owner's machine: Postgres 128MB shared_buffers, data may be on a 5400rpm HDD; bulk loads were very slow (random reads on unique event_key index). load_fire.py now ANALYZEs the temp table and inserts ORDER BY event_key.
+
+8. TRAINING EXPORT (2026-11-08)
+- Decision: train on 2018-04-01..2020-12-31 first (weather files exist for 2018-2020 only; NDVI rasters 2018-2024). Widen data_window.feature_end after loading 2021+ weather
+  (Open-Meteo archive; fetch_openmeteo exists in live.py; a download job still has to be written).
+- app/jobs/export_training.py writes monthly Parquet + _meta.json (label = fire in next H days, lag features strictly before day d, fold_space = district, fold_time = year, weight w for negative sampling).
+  Tested on the test DB (label and fires_7d recomputed independently: 0 mismatches). Not yet run on firemap_real.
+- docs/MODELING_HANDOFF.md is the document for the model person.
+- Next ideas: forest mask, weather download for 2021-2024, move Postgres to the NVMe, serve extra features in build_feature_row, trained-model loader + calibration + backtest job.

@@ -13,6 +13,7 @@ The tables `cells`, `fire_events`, `ingestion_runs`, `daily_features` and `risk_
 | 5 | `005_daily.sql` | `ingest_scope.rolling`, `weather_daily.method`, updated `build_weather_features`. |
 | 6 | `006_fire_view.sql` | View `v_fire` (the one definition of a fire) and table `data_window` (the project's date range, 2018-04-01 to 2024-03-18). |
 | 7 | `007_label_layer_v_fire.sql` | `build_label_layer` reads `v_fire`, so labels and the map agree. |
+| 8 | `008_feature_window.sql` | `data_window.feature_start / feature_end`: the period with labels and features (2018-04-01 .. 2020-12-31 for now). |
 
 Notes
 - `002_mvp.sql` ends with an example scope for three Mizoram districts and a `CALL build_label_layer`. Edit the district
