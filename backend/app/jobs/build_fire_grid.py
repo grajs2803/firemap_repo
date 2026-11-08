@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app import create_app
 from app.extensions import db
 
-FIRE_FILTER = "confidence IN ('n', 'h') AND COALESCE(detection_type, 0) = 0"
+FIRE_FILTER = "cell_id IS NOT NULL AND confidence IN ('n', 'h') AND COALESCE(detection_type, 0) = 0"
 
 CREATE = """
 CREATE TABLE IF NOT EXISTS fire_grid_01 (
