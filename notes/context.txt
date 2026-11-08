@@ -1,0 +1,56 @@
+EMBERGRID - CONTEXT FOR CLAUDE (read this first in a new session)
+Last updated: 2026-11-08
+
+1. PROJECT
+Forest-fire risk heatmap for India (CS 699 / M.Tech project). Repo: github.com/grajs2803/firemap_repo,
+working branch "backend". Backend only (Flask + PostgreSQL). Owner prefers short, simple answers and
+minimal code; time is tight. Teach like a senior engineer, include the maths and a few sources when useful.
+
+2. WHAT EXISTS (see also the 28-page PDF "EmberGrid_Backend_Documentation.pdf" delivered earlier)
+- Grid: 0.01 degree cells anchored at (0,0). cell_id = r{row:04d}c{col:04d}, row = floor(round(lat/0.01, 9)).
+- Tables in DB firemap_real: cells (~2.9M), fire_events, daily_features (partitioned by month),
+  risk_predictions, ingest_scope, ingestion_runs, weather_points, cell_weather_map, weather_daily,
+  ndvi_composites, users, refresh_sessions. Five SQL files (pilot, mvp, weather, ndvi, daily) were run by
+  hand in psql and are NOT in the repo yet.
+- Pilot area: West Singhbhum + Bastar (10,800 cells). Daily pipeline: python -m app.jobs.run_daily.
+- Dummy model dummy-0.2.0 (fwi, ndvi, rainfall_mm); no trained model. Slope, road distance and fire
+  spread rate were deliberately dropped.
+- API: /api/v1/heatmap, /api/v1/cells/<id>, /api/v1/cells/<id>/timeseries, /api/v1/auth/*.
+
+3. THE DEMO ON BRANCH feature/fire-history-grid (this is the "bare minimum working model")
+- app/jobs/build_fire_grid.py: fire_events -> fire_grid_01(ym, grow, gcol, n), 0.1 degree, monthly,
+  full rebuild (DELETE + INSERT in one transaction), self-check that totals match.
+- app/services/history_services.py + app/routes/history_routes.py: /api/v1/history/months and /grid?to=
+  (cumulative sum up to a month).
+- app/static/history_map.html served at /map: Leaflet canvas, month slider, log colour scale
+  t = ln(1+n)/ln(1+nmax), fixed scale taken from the all-time max, hover shows the cell count.
+- Decisions: fixed 0.1 degree grid (about 93k cells max for India), cumulative only, no play button,
+  no bbox or resolution options, JSON compact (app.json.compact = True).
+- Fire definition: confidence in ('n','h') and COALESCE(detection_type,0)=0. The SQL procedure
+  build_label_layer in the owner's DB still uses confidence only; they should be made consistent.
+- Tested on a test DB (606,858 VIIRS rows for 2022, 436,602 pass the filter): grid total equals SQL total.
+
+4. NOT DONE / IDEAS FOR LATER (in rough priority)
+- Push the branch and open the PR (Claude's session had no GitHub write access; the owner pushes from a bundle).
+- Commit the five SQL files under backend/db/sql/ so a fresh DB can be rebuilt.
+- Add live FIRMS days to the history map (run_daily already writes fire_events; re-run build_fire_grid).
+- Finer detail when zoomed in: query fire_events by bbox at 0.01 degree (index ix_fire_events_date_cell).
+- Risk layer on the same page: read risk_predictions through /api/v1/heatmap.
+- Compress responses (gzip) if the payload grows; full India history at 0.1 degree is about 0.7 MB raw (estimate).
+- Known data caveats: crop-residue burning (Punjab/Haryana, Oct-Nov) and jhum (north-east, Feb-Apr) dominate
+  counts; a forest mask is needed before training. fire_events history ends 2024-03-18; NDVI rasters end 2024.
+- Small cleanups listed in Part D of the PDF (unused constants, socketio, stale error text, debug print,
+  ORM IngestScope lacks `rolling`, auth error format differs).
+- Later: trained model with spatial block cross-validation, bilinear weather interpolation, Alembic, tests, Docker/ECS.
+
+5. GOTCHAS
+- SQLAlchemy 2.1 defaults postgresql:// to psycopg v3. Use postgresql+psycopg2:// (requirements pin <2.1).
+- A "@" in a DB password must be written %40. The default DATABASE_URL points at DB "firemap", the data is in "firemap_real".
+- SQL procedures that COMMIT must be CALLed in autocommit (app/jobs/db_util.py does this).
+- psql prompt "-#" means a missing semicolon.
+- Claude's sandbox cannot reach cdnjs or OpenStreetMap, so the map page was tested with local Leaflet and no tiles.
+  Test Postgres: cluster 16/main, DB embergrid_test (tester/tester); start with pg_ctlcluster 16 main start.
+- Claude does not backdate git commits; commit dates are real.
+
+6. HOW TO RUN THE DEMO
+See backend/README.md. In short: set DATABASE_URL in backend/.env, python -m app.jobs.build_fire_grid, python run.py, open /map.
